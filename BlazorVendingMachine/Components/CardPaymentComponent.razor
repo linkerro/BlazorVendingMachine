@@ -1,0 +1,68 @@
+﻿<h3>CardPaymentComponent</h3>
+@if (IsActive)
+{
+    <div>
+        <b>
+            De facut @Sum piloane
+        </b>
+    </div>
+}
+<div>
+    @if (IsActive)
+    {
+        <input type="button" value="pay" @onclick="Pay" />
+        <input type="button" value="fail" @onclick="Fail" />
+
+    }
+    else
+    {
+        <input type="button" value="pay" disabled="disabled" />
+        <input type="button" value="fail" disabled="disabled" />
+
+    }
+</div>
+
+@using BlazorVendingMachine.Events;
+@using BlazorVendingMachine.Services;
+@inject CardPaymentService CardPaymentService
+@inject IJSRuntime jsRuntime
+@code {
+
+    public bool IsActive { get; set; }
+
+    public double Sum { get; set; }
+
+    public void Pay()
+    {
+        IsActive = false;
+        jsRuntime.InvokeAsync<object>("console.log", $"Payment success {Sum}");
+        CardPaymentService.CardSystem.OnNext(new PaymentSuccessfulEvent { PaymentSum = Sum });
+        Sum = 0;
+    }
+
+    public void Fail()
+    {
+        IsActive = false;
+        jsRuntime.InvokeAsync<object>("console.log", $"Payment fail {Sum}");
+
+        CardPaymentService.CardSystem.OnNext(new PaymentFailedEvent());
+        Sum = 0;
+    }
+
+    protected override void OnInitialized()
+    {
+        IsActive = false;
+
+        CardPaymentService.CardSystem.Subscribe(x =>
+        {
+            switch (x)
+            {
+                case ActivateCardReaderEvent activation:
+                    IsActive = true;
+                    Sum = activation.PaymentSum;
+                    StateHasChanged();
+                    break;
+            }
+        });
+    }
+}

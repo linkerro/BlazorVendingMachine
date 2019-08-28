@@ -1,0 +1,21 @@
+﻿<input type="button" value=@ButtonText @onclick="OnClick"/>
+
+@using BlazorVendingMachine.Models;
+@using System.Reactive.Subjects;
+
+@code {
+    [Parameter]
+    public Drink Drink { get; set; }
+
+    public string ButtonText { get {
+            return $"{Drink.Name} {Drink.Price}RON";
+        } }
+
+    [Parameter]
+    public Subject<Drink> OnSelected { get; set; }
+
+    public void OnClick()
+    {
+        OnSelected.OnNext(Drink);
+    }
+}

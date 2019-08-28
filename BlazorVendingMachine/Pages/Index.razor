@@ -1,0 +1,159 @@
+﻿@page "/"
+@using BlazorVendingMachine.Components;
+@using System.Globalization;
+<h1>Hello, world!</h1>
+
+Welcome to your favorite Romanian Vending Machine.
+
+<div>
+    @StatusMessage
+</div>
+<div>
+    Current Balance: @Debit.ToString("C2", Culture)
+</div>
+<div>
+    @foreach (var drink in Drinks)
+    {
+        <DrinkButton Drink="drink" OnSelected="DrinkSelected"></DrinkButton>
+    }
+</div>
+
+<CoinAcceptorComponent></CoinAcceptorComponent>
+
+@*<CardPaymentComponent></CardPaymentComponent>*@
+
+@using System.Reactive.Subjects;
+@using Services;
+@using BlazorVendingMachine.Events;
+@using BlazorVendingMachine.Models;
+@using Microsoft.JSInterop;
+@inject StockService Stock
+@inject CoinAcceptorService CoinAcceptor
+@inject CardPaymentService CardReader
+@inject IJSRuntime jsRuntime
+@code{
+
+    public IEnumerable<Drink> Drinks { get; set; } = new List<Drink>();
+    public Subject<Drink> DrinkSelected { get; set; } = new Subject<Drink>();
+    public string StatusMessage { get; set; }
+    public double Debit { get; set; }
+    public CultureInfo Culture { get; } = new CultureInfo("ro-RO", false);
+    public Drink SelectedDrink { get; set; }
+
+    protected override void OnInitialized()
+    {
+        Stock.StockEvents.Subscribe(x =>
+        {
+            switch (x)
+            {
+                case StockStatusResponse stock:
+                    Drinks = stock.AvailableDrinks;
+                    StateHasChanged();
+                    break;
+                case DrinkDeliverySuccess deliverySuccess:
+                    jsRuntime.InvokeAsync<object>("console.log", $"drink delivery success {Debit}");
+                    Debit -= deliverySuccess.Drink.Price;
+                    StatusMessage = "Drink delivered. Have a nice day!";
+                    StateHasChanged();
+                    break;
+                case DrinkDeliveryFailure deliveryFailure:
+                    StatusMessage = "There has been an error delivering the selected drink. Please pick a different option";
+                    StateHasChanged();
+                    break;
+            }
+        });
+
+        CoinAcceptor.CoinInsertion.Subscribe(c =>
+        {
+            Debit += c;
+            StateHasChanged();
+        });
+
+        CardReader.CardSystem.Subscribe(x =>
+        {
+            switch (x)
+            {
+                case PaymentSuccessfulEvent paymentSuccessful:
+                    Debit += paymentSuccessful.PaymentSum;
+                    Stock.StockEvents.OnNext( new RequestDrinkEvent{ Drink = SelectedDrink});
+                    break;
+                case PaymentFailedEvent paymentFailed:
+                    StatusMessage = "Payment failed";
+                    break;
+            }
+            StateHasChanged();
+        });
+
+        DrinkSelected.Subscribe(d =>
+        {
+            SelectedDrink = d;
+            if (d.Price <= Debit)
+            {
+                Stock.StockEvents.OnNext(new RequestDrinkEvent { Drink = d });
+            }
+            else
+            {
+                StatusMessage = "Insufficient resources. You must construct additional pilons!";
+                CardReader.CardSystem.OnNext(new ActivateCardReaderEvent { PaymentSum = Math.Abs(Debit - d.Price) });
+            }
+            StateHasChanged();
+        });
+
+        var restockRacks = new List<Rack>
+    {
+                new Rack
+                {
+                    Drink=new Drink
+                    {
+                        Name="Coca Cola",
+                        Price=3.5
+                    },
+                    Count=10
+                },
+                new Rack
+                {
+                    Drink=new Drink
+                    {
+                        Name="Coca Cola",
+                        Price=3.5
+                    },
+                    Count=10
+                },
+                new Rack
+                {
+                    Drink=new Drink
+                    {
+                        Name="Pepsi Cola",
+                        Price=3.5
+                    },
+                    Count=10
+                },
+                new Rack
+                {
+                    Drink=new Drink
+                    {
+                        Name="Diet Cola",
+                        Price=3.5
+                    },
+                    Count=10
+                },
+                new Rack
+                {
+                    Drink=new Drink
+                    {
+                        Name="Pepsi Max",
+                        Price=3.5
+                    },
+                    Count=10
+                }
+            };
+
+        Stock.StockEvents.OnNext(new RestockEvent
+        {
+            Racks = restockRacks
+        });
+
+        Stock.StockEvents.OnNext(new RequestStockStatus());
+
+    }
+}
